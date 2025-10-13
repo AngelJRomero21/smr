@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emergencias Laborales</title>
+    <!-- Carga de Tailwind CSS para un diseño rápido y responsivo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilos personalizados para la experiencia de juego */
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #1f2937 0%, #000000 100%); /* Fondo oscuro atractivo */
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background-color: #1f2937;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease-in-out;
+        }
+
+        .quiz-title {
+            color: #fca5a5; /* Rojo claro/coral */
+            font-weight: 800;
+        }
+
+        .question-box {
+            background-color: #374151;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            min-height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .option-button {
+            width: 100%;
+            padding: 15px;
+            margin: 8px 0;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            border: 3px solid transparent; /* Borde inicial */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .option-button:hover:not(.disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Colores de las opciones Kahoot! */
+        .color-a { background-color: #ef4444; } /* Rojo */
+        .color-b { background-color: #3b82f6; } /* Azul */
+        .color-c { background-color: #f59e0b; } /* Amarillo */
+        .color-d { background-color: #10b981; } /* Verde */
+
+        /* Estados de respuesta */
+        .correct {
+            background-color: #10b981 !important; /* Verde intenso */
+            border: 3px solid #6ee7b7;
+        }
+
+        .incorrect {
+            background-color: #ef4444 !important; /* Rojo intenso */
+            border: 3px solid #fca5a5;
+            opacity: 0.7;
+        }
+
+        .disabled {
+            pointer-events: none;
+            opacity: 0.5;
+        }
+
+        /* Barra de progreso / Tiempo */
+        #time-bar {
+            height: 15px;
+            background-color: #4b5563;
+            border-radius: 7px;
+            overflow: hidden;
+            margin-top: 10px;
+            margin-bottom: 20px;
+        }
+
+        #time-progress {
+            height: 100%;
+            width: 100%;
+            background-color: #3b82f6; /* Azul */
+            transition: width 0.1s linear;
+        }
+
+        #score-display {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        /* Responsive Layout (usando clases de Tailwind para grid) */
+        @media (min-width: 640px) {
+            .options-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+            }
+        }
+
+        .ranking-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            background-color: #374151;
+            font-weight: 600;
+        }
+
+        .ranking-item:nth-child(1) { background-color: #f59e0b; color: #1f2937; } /* Oro */
+        .ranking-item:nth-child(2) { background-color: #9ca3af; color: #1f2937; } /* Plata */
+        .ranking-item:nth-child(3) { background-color: #b45309; color: #1f2937; } /* Bronce */
+
+        /* Modal Feedback */
+        #feedback-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background-color: #1f2937;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 90%;
+            width: 500px;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+        }
+    </style>
+    <!-- Firebase Imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, query, limit, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+
+        // Establecer el nivel de registro a Debug
+        setLogLevel('Debug');
+
+        const userIdPlaceholder = 'default-user-id'; // Para uso inicial
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-kahoot-app';
+        
+        // Exponer variables globales para el script principal
+        window.fb = {
+            db: null,
+            auth: null,
+            userId: null,
+            appId: appId,
+            isAuthReady: false,
+            saveScore: saveScore,
+            loadRanking: loadRanking
+        };
+
+        if (firebaseConfig) {
+            const app = initializeApp(firebaseConfig);
+            window.fb.db = getFirestore(app);
+            window.fb.auth = getAuth(app);
+
+            // 1. Manejo de autenticación
+            onAuthStateChanged(window.fb.auth, async (user) => {
+                if (user) {
+                    window.fb.userId = user.uid;
+                } else {
+                    window.fb.userId = userIdPlaceholder; // Placeholder si es anónimo/error
+                }
+
+                // 2. Autenticación inicial si es necesario
+                if (!user) {
+                    try {
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(window.fb.auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(window.fb.auth);
+                        }
+                    } catch (error) {
+                        console.error("Firebase Auth Error:", error);
+                    }
+                }
+                
+                // Una vez que el usuario y la base de datos están listos, cargar el ranking
+                window.fb.isAuthReady = true;
+                if (window.fb.db && window.fb.userId) {
+                    window.fb.loadRanking();
+                }
+            });
+        }
+
+        // --- Funciones de Firestore ---
+
+        /**
+         * Guarda el puntaje final del usuario en la colección pública de rankings.
+         * @param {number} finalScore La puntuación obtenida en el juego.
+         */
+        async function saveScore(finalScore) {
+            if (!window.fb.db || !window.fb.userId) {
+                console.error("Firestore no está inicializado o el usuario no está autenticado.");
+                return;
+            }
+
+            // Pedir nombre al usuario
+            let userName = prompt("¡Felicidades! Ingresa tu nombre para el Ranking:");
+            if (!userName || userName.trim() === "") {
+                userName = "Anónimo";
+            }
+
+            try {
+                // Ruta pública para el ranking: /artifacts/{appId}/public/data/leaderboard
+                const rankingCollectionPath = `artifacts/${window.fb.appId}/public/data/leaderboard`;
+                const userDocRef = doc(window.fb.db, rankingCollectionPath, window.fb.userId);
+
+                // Guardar/Actualizar el puntaje (si el nuevo es mayor, o si es el primero)
+                await setDoc(userDocRef, {
+                    userId: window.fb.userId,
+                    userName: userName.substring(0, 15), // Limitar a 15 caracteres
+                    score: finalScore,
+                    timestamp: serverTimestamp() // Usa el tiempo del servidor para ordenar
+                }, { merge: true });
+
+                console.log("Puntaje guardado con éxito.");
+            } catch (error) {
+                console.error("Error al guardar el puntaje en Firestore:", error);
+            }
+        }
+
+        /**
+         * Escucha los cambios en el ranking en tiempo real y actualiza la UI.
+         */
+        function loadRanking() {
+            if (!window.fb.db) {
+                console.error("Firestore no está inicializado.");
+                return;
+            }
+            
+            // Ruta pública para el ranking
+            const rankingCollectionPath = `artifacts/${window.fb.appId}/public/data/leaderboard`;
+            const leaderboardRef = collection(window.fb.db, rankingCollectionPath);
+
+            // Consulta para obtener los 5 mejores puntajes, ordenados por 'score' descendente
+            const q = query(leaderboardRef, orderBy("score", "desc"), limit(5));
+
+            onSnapshot(q, (snapshot) => {
+                const rankingListEl = document.getElementById('ranking-list');
+                if (!rankingListEl) return;
+                
+                rankingListEl.innerHTML = '';
+                
+                if (snapshot.empty) {
+                    rankingListEl.innerHTML = '<p class="text-gray-400 text-center">Sé el primero en el Ranking!</p>';
+                    return;
+                }
+
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const item = document.createElement('div');
+                    item.className = 'ranking-item';
+                    
+                    const scoreDisplay = data.score.toLocaleString(); // Formato de número
+                    
+                    item.innerHTML = `
+                        <span>${data.userName}</span>
+                        <span>${scoreDisplay} pts</span>
+                    `;
+                    rankingListEl.appendChild(item);
+                });
+                console.log("Ranking actualizado.");
+            }, (error) => {
+                console.error("Error al cargar el ranking:", error);
+                document.getElementById('ranking-list').innerHTML = '<p class="text-red-400 text-center">Error al cargar el Ranking.</p>';
+            });
+        }
+    </script>
+    <!-- Incluir la función orderBy fuera del bloque module para uso en la consulta -->
+    <script type="module">
+        import { orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        window.orderBy = orderBy;
+        window.loadRanking = window.fb.loadRanking; // Exportar para uso en el script principal
+    </script>
+</head>
+<body>
+
+<!-- Modal para Feedback de Respuesta -->
+<div id="feedback-modal">
+    <div class="modal-content">
+        <h3 id="modal-title" class="text-3xl font-bold mb-4">¡Respuesta Correcta!</h3>
+        <p id="modal-message" class="text-lg mb-6 text-gray-300">Ganaste 850 puntos.</p>
+        <button id="modal-close-button" class="option-button bg-pink-600 hover:bg-pink-700" onclick="closeModal()">
+            Continuar
+        </button>
+    </div>
+</div>
+
+<div class="container" id="quiz-container">
+    <div class="flex justify-between items-center mb-6 border-b border-gray-600 pb-4">
+        <h1 class="text-3xl quiz-title">Kahoot! Primeros Auxilios</h1>
+        <div id="score-display" class="bg-gray-700 py-2 px-4 rounded-lg">Puntuación: 0</div>
+    </div>
+
+    <!-- Contenedor principal de la pregunta -->
+    <div id="quiz-content">
+        <div id="question-number" class="text-sm text-gray-400 mb-2">Pregunta 1/X</div>
+        <div id="question-text" class="question-box">
+            ¡Pulsa "Comenzar" para empezar el Kahoot!
+        </div>
+
+        <div id="time-bar" class="hidden">
+            <div id="time-progress" style="width: 100%;"></div>
+        </div>
+
+        <!-- Opciones de respuesta -->
+        <div id="options-container" class="options-grid">
+            <!-- Contenido inicial de bienvenida -->
+            <div class="text-center text-gray-400 col-span-full">
+                <p>Pulsa "Comenzar" para iniciar la ronda de preguntas.</p>
+                <p class="mt-2 text-sm">Tienes entre 15 y 20 segundos por pregunta.</p>
+            </div>
+        </div>
+
+        <!-- Botón para iniciar o avanzar -->
+        <button id="next-button" class="option-button bg-pink-600 hover:bg-pink-700 mt-6" onclick="startGame()">
+            Comenzar
+        </button>
+    </div>
+
+    <!-- Pantalla de resultados (oculta al inicio) -->
+    <div id="results-screen" class="hidden text-center p-8">
+        <h2 class="text-4xl font-bold mb-4 text-yellow-400">¡Juego Terminado!</h2>
+        <p class="text-2xl mb-8">Tu Puntuación Final es: <span id="final-score" class="font-extrabold text-5xl text-white">0</span></p>
+        
+        <h3 class="text-2xl font-semibold mb-3 text-gray-300">🏆 Ranking Global 🏆</h3>
+        <div id="ranking-list" class="mx-auto max-w-sm mb-8">
+            <!-- El ranking se cargará aquí por Firestore -->
+            <div class="text-gray-400">Cargando Ranking...</div>
+        </div>
+
+        <button class="option-button bg-blue-600 hover:bg-blue-700 mt-4" onclick="location.reload()">
+            Volver a Jugar
+        </button>
+    </div>
+</div>
+
+<script>
+    // --- Configuración y Preguntas ---
+    const QUESTIONS = [
+        {
+            question: "¿Cuál es la actuación inmediata recomendada para una Hemorragia Externa según el documento?",
+            options: [
+                "Llamar al 112 inmediatamente sin tocar la herida.",
+                "Aplicar presión directa sobre la herida para detener el sangrado.",
+                "Lavar la herida con agua helada por 15 minutos.",
+                "Aplicar un torniquete por encima de la lesión."
+            ],
+            answer: 1, // 'Aplicar presión directa sobre la herida para detener el sangrado.' (Pág. 3)
+            timeLimit: 15,
+            feedback: "La actuación clave para una Hemorragia Externa visible es aplicar **presión directa** en el punto de sangrado."
+        },
+        {
+            question: "¿Qué tipo de hemorragia es 'la más grave' y requiere traslado urgente a un hospital?",
+            options: [
+                "Externa",
+                "Interiorizada (por orificios naturales)",
+                "Capilar",
+                "Interna (ocurre dentro de cavidades corporales)"
+            ],
+            answer: 3, // 'Interna' (Pág. 3)
+            timeLimit: 15,
+            feedback: "La **Hemorragia Interna** es la más grave, ya que el sangrado no es visible y ocurre dentro de las cavidades corporales, requiriendo atención médica urgente."
+        },
+        {
+            question: "Para una Quemadura de 1º Grado, ¿cuál es el protocolo principal de actuación?",
+            options: [
+                "Aplicar hielo directamente en la zona.",
+                "Enfriar la zona con agua corriente fría (no helada) durante 10-15 minutos.",
+                "Pinchar las ampollas para liberar el líquido.",
+                "Aplicar mantequilla o remedios caseros de inmediato."
+            ],
+            answer: 1, // 'Enfriar la zona con agua corriente fría (no helada) durante 10-15 minutos.' (Pág. 4)
+            timeLimit: 20,
+            feedback: "El protocolo esencial es enfriar inmediatamente con **agua fría corriente** (nunca hielo) por 10-15 minutos para limitar el daño por calor."
+        },
+        {
+            question: "¿Cuál es la principal característica de una Quemadura de 2º Grado que la diferencia de la de 1º Grado?",
+            options: [
+                "La piel se presenta rojiza, seca y sensible.",
+                "La pérdida de sensibilidad en la zona afectada.",
+                "La aparición de ampollas (flictenas) llenas de líquido claro.",
+                "Solo afecta a la capa más superficial de la piel (epidermis)."
+            ],
+            answer: 2, // 'La aparición de ampollas (flictenas) llenas de líquido claro.' (Pág. 5)
+            timeLimit: 20,
+            feedback: "La formación de **ampollas (flictenas)** es el signo característico de una quemadura de 2º Grado."
+        },
+        {
+            question: "Si una persona puede toser o hablar durante un atragantamiento, ¿cuál es la acción recomendada?",
+            options: [
+                "Realizar inmediatamente la Maniobra de Heimlich.",
+                "Darle 5 golpes secos y fuertes en la espalda.",
+                "Animarle a seguir tosiendo, sin intervenir con maniobras agresivas.",
+                "Intentar extraer el objeto con los dedos."
+            ],
+            answer: 2, // 'Animarle a seguir tosiendo, sin intervenir con maniobras agresivas.' (Pág. 8)
+            timeLimit: 15,
+            feedback: "Si la víctima tose, la tos es el mecanismo más efectivo. Solo se interviene si **deja de toser** o pierde la conciencia."
+        },
+        {
+            question: "Si la Maniobra de Golpes en un atragantamiento no funciona, ¿qué maniobra se debe realizar a continuación?",
+            options: [
+                "Reanimación Cardiopulmonar (RCP).",
+                "Maniobra de Heimlich (5 compresiones abdominales).",
+                "Esperar a la llegada de los servicios de emergencia (112).",
+                "Colocar a la víctima en Posición Lateral de Seguridad (PLS)."
+            ],
+            answer: 1, // 'Maniobra de Heimlich (5 compresiones abdominales).' (Pág. 8)
+            timeLimit: 20,
+            feedback: "Si los golpes no son efectivos, el siguiente paso es la **Maniobra de Heimlich** (5 compresiones abdominales) antes de recurrir a RCP si pierde la conciencia."
+        },
+        {
+            question: "En caso de fuego en la ropa de una víctima, ¿qué técnica se recomienda si es posible para sofocar las llamas?",
+            options: [
+                "Correr rápidamente al extintor más cercano.",
+                "Usar agua directamente sobre la llama.",
+                "Rodar por el suelo ('Stop, Drop, and Roll').",
+                "Quitar la ropa rápidamente a tirones."
+            ],
+            answer: 2, // 'Rodar por el suelo ("Stop, Drop, and Roll").' (Pág. 7)
+            timeLimit: 15,
+            feedback: "La técnica de 'Stop, Drop, and Roll' (**Rodar por el suelo**) es la más segura y rápida para sofocar llamas en la ropa de la víctima."
+        }
+    ];
+
+    // --- Variables de Estado del Juego ---
+    let currentQuestionIndex = 0;
+    let score = 0;
+    let timer;
+    let timeRemaining;
+    let hasAnswered = false;
+    const TIME_INTERVAL = 100; // 100ms para un progreso suave
+
+    // --- Referencias del DOM y Modal ---
+    const questionTextEl = document.getElementById('question-text');
+    const optionsContainer = document.getElementById('options-container');
+    const scoreDisplay = document.getElementById('score-display');
+    const nextButton = document.getElementById('next-button');
+    const timeProgress = document.getElementById('time-progress');
+    const questionNumberEl = document.getElementById('question-number');
+    const quizContent = document.getElementById('quiz-content');
+    const resultsScreen = document.getElementById('results-screen');
+    const finalScoreEl = document.getElementById('final-score');
+    
+    // Modal Elements
+    const feedbackModal = document.getElementById('feedback-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalMessage = document.getElementById('modal-message');
+
+    // --- Funciones de Utilidad ---
+
+    /**
+     * Muestra el modal de feedback.
+     */
+    function showModal(title, message, isCorrect) {
+        modalTitle.textContent = title;
+        modalTitle.className = `text-3xl font-bold mb-4 ${isCorrect ? 'text-green-400' : 'text-red-400'}`;
+        modalMessage.innerHTML = message;
+        
+        // El botón Continuar llamará a nextQuestion después de cerrar el modal
+        document.getElementById('modal-close-button').onclick = () => {
+             closeModal();
+             nextQuestion();
+        };
+
+        feedbackModal.style.display = 'flex';
+    }
+    
+    /**
+     * Cierra el modal de feedback.
+     */
+    function closeModal() {
+        feedbackModal.style.display = 'none';
+    }
+
+    // --- Funciones del Juego ---
+
+    /**
+     * Inicia el juego.
+     */
+    function startGame() {
+        // Inicializar o resetear estado
+        currentQuestionIndex = 0;
+        score = 0;
+        scoreDisplay.textContent = `Puntuación: 0`;
+        
+        // Mostrar elementos de juego
+        document.getElementById('time-bar').classList.remove('hidden');
+        nextButton.innerText = "Siguiente Pregunta";
+        nextButton.onclick = nextQuestion;
+        nextButton.classList.add('disabled');
+        loadQuestion(currentQuestionIndex);
+    }
+
+    /**
+     * Carga y muestra la pregunta actual en la interfaz.
+     * @param {number} index El índice de la pregunta a cargar.
+     */
+    function loadQuestion(index) {
+        // Fin del juego
+        if (index >= QUESTIONS.length) {
+            showResults();
+            return;
+        }
+
+        const q = QUESTIONS[index];
+
+        // Resetear UI
+        clearInterval(timer);
+        optionsContainer.classList.remove('disabled');
+        nextButton.classList.add('disabled');
+        hasAnswered = false; // Permite responder de nuevo
+        
+        // Limpiar estilos de botones en caso de reciclaje
+        const buttons = optionsContainer.querySelectorAll('.option-button');
+        buttons.forEach(btn => btn.className = btn.className.split(' ').filter(c => c !== 'correct' && c !== 'incorrect' && c !== 'disabled').join(' '));
+
+        questionNumberEl.textContent = `Pregunta ${index + 1}/${QUESTIONS.length}`;
+
+        // Mostrar texto de la pregunta
+        questionTextEl.textContent = q.question;
+
+        // Limpiar y crear botones de opciones
+        optionsContainer.innerHTML = '';
+        const colors = ['color-a', 'color-b', 'color-c', 'color-d'];
+        q.options.forEach((option, i) => {
+            const button = document.createElement('button');
+            button.className = `option-button ${colors[i]}`;
+            button.setAttribute('data-answer', i);
+            button.textContent = option;
+            button.onclick = () => selectAnswer(i, q);
+            optionsContainer.appendChild(button);
+        });
+
+        // Iniciar el temporizador
+        startTimer(q.timeLimit);
+    }
+
+    /**
+     * Inicia el temporizador para la pregunta actual.
+     * @param {number} limitSeconds El tiempo límite en segundos.
+     */
+    function startTimer(limitSeconds) {
+        timeRemaining = limitSeconds * 1000;
+        const initialTime = timeRemaining;
+
+        timer = setInterval(() => {
+            timeRemaining -= TIME_INTERVAL;
+
+            // Actualizar barra de progreso
+            const progressPercent = (timeRemaining / initialTime) * 100;
+            timeProgress.style.width = `${progressPercent}%`;
+
+            if (timeRemaining <= 0) {
+                clearInterval(timer);
+                timeProgress.style.width = '0%';
+                if (!hasAnswered) {
+                     // Tiempo agotado equivale a respuesta -1
+                    selectAnswer(-1, QUESTIONS[currentQuestionIndex]); 
+                } else {
+                    // Si ya se respondió, simplemente pasa al siguiente
+                    nextButton.classList.remove('disabled');
+                }
+            }
+        }, TIME_INTERVAL);
+    }
+
+    /**
+     * Maneja la selección de una respuesta por el usuario.
+     * @param {number} selectedIndex El índice de la opción seleccionada.
+     * @param {object} questionObj El objeto de la pregunta actual.
+     */
+    function selectAnswer(selectedIndex, questionObj) {
+        if (hasAnswered) return;
+        hasAnswered = true;
+        
+        clearInterval(timer);
+        optionsContainer.classList.add('disabled'); // Deshabilitar botones
+        
+        const correctIndex = questionObj.answer;
+        const buttons = optionsContainer.querySelectorAll('.option-button');
+        
+        let isCorrect = selectedIndex === correctIndex;
+        let gainedScore = 0;
+        let modalTitleText;
+        let modalMessageText;
+
+        // Marcar respuesta en la UI
+        buttons.forEach((button, i) => {
+            button.classList.add('disabled'); // Deshabilita todos
+
+            if (i === correctIndex) {
+                button.classList.add('correct'); // Siempre resalta la correcta
+            } else if (i === selectedIndex && !isCorrect) {
+                button.classList.add('incorrect'); // Resalta la incorrecta seleccionada
+            }
+        });
+
+        // Lógica de Puntuación y Feedback
+        if (isCorrect) {
+            const maxScore = 1000;
+            // Calcular puntuación basada en el tiempo
+            const timeFactor = timeRemaining / (questionObj.timeLimit * 1000);
+            gainedScore = Math.floor(maxScore * (0.5 + 0.5 * timeFactor)); // Mínimo 500, Máximo 1000
+            score += gainedScore;
+            scoreDisplay.textContent = `Puntuación: ${score}`;
+            
+            modalTitleText = "¡Respuesta Correcta!";
+            modalMessageText = `Ganaste **${gainedScore}** puntos. <br><br> ${questionObj.feedback}`;
+            
+        } else {
+            modalTitleText = "¡Respuesta Incorrecta!";
+            if (selectedIndex === -1) {
+                modalTitleText = "¡Tiempo Agotado!";
+                modalMessageText = `No respondiste a tiempo. <br><br> La respuesta correcta era: **${questionObj.options[correctIndex]}**.<br><br> *Feedback:* ${questionObj.feedback}`;
+            } else {
+                modalMessageText = `Tu respuesta fue **${questionObj.options[selectedIndex]}**.<br><br> La respuesta correcta era: **${questionObj.options[correctIndex]}**.<br><br> *Feedback:* ${questionObj.feedback}`;
+            }
+        }
+        
+        // Muestra el modal de feedback
+        showModal(modalTitleText, modalMessageText, isCorrect);
+        currentQuestionIndex++;
+    }
+
+    /**
+     * Pasa a la siguiente pregunta.
+     */
+    function nextQuestion() {
+        loadQuestion(currentQuestionIndex);
+    }
+
+    /**
+     * Muestra la pantalla de resultados finales y guarda el puntaje.
+     */
+    function showResults() {
+        quizContent.classList.add('hidden');
+        resultsScreen.classList.remove('hidden');
+        finalScoreEl.textContent = score;
+        
+        // Guardar puntaje en Firestore y cargar ranking
+        if (window.fb && window.fb.isAuthReady) {
+            window.fb.saveScore(score);
+            // La función loadRanking se llama automáticamente al inicializar Firebase
+        } else {
+            document.getElementById('ranking-list').innerHTML = '<p class="text-yellow-400 text-center">El Ranking se cargará después de la inicialización.</p>';
+        }
+        
+    }
+
+    // Inicializar el diseño al cargar
+    document.addEventListener('DOMContentLoaded', () => {
+        // Cargar el ranking si Firebase ya está listo, o se cargará después de la autenticación.
+        if (window.fb && window.fb.isAuthReady && window.loadRanking) {
+             window.loadRanking();
+        } else if (document.getElementById('ranking-list')) {
+            document.getElementById('ranking-list').innerHTML = '<div class="text-gray-400">Iniciando Firebase y Cargando Ranking...</div>';
+        }
+    });
+
+</script>
+
+</body>
+</html>
